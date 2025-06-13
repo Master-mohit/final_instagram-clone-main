@@ -1,0 +1,87 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>Instagram Save</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<style>body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+  }
+  
+  .container #top-part{
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  
+  .save-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    
+    margin-left: 5vw;
+  }
+  
+  .save-options .photo {
+    text-align: center;
+  }
+  
+  .save-options img {
+    width: 150px;
+    height: 150px;
+    border-radius: 8px;
+  }
+  
+  .save-options span {
+    display: block;
+    margin-top: 10px;
+    font-weight: bold;
+  }
+  .container a{
+     color: blue;
+      text-decoration: none;
+      font-size: larger;
+      padding-top: 4vw;
+  
+  }
+   
+  </style>
+<body>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>tittle</title>
+      <link
+    href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css"
+    rel="stylesheet"
+/>
+      <link rel="stylesheet" href="styles.css">
+    </head>
+    <body>
+        <div class="container">
+                <a href="/profile"><i class="ri-arrow-left-s-line"></i> profile</a>
+            <div id="top-part">
+              <h2>Saved Posts</h2>
+            </div>
+            <div class="save-options">
+              <% user.saved.reverse().forEach(function(savedPost) { %>
+                <div class="photo">
+                  <img src="/images/uploads/<%= savedPost.picture %>" alt="">
+                </div>
+              <% }) %>
+            </div>
+          </div>
+          
+    </body>
+    </html>
+    
+</body>
+</html>
