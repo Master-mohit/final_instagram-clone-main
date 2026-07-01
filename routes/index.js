@@ -8,6 +8,8 @@ const storyModel = require("./story");
 passport.use(new localStrategy(userModel.authenticate()));
 const upload = require("./multer");
 const utils = require("../utils/utils");
+const generateCaption = require("../config/germini");
+
 
 
 // GET
@@ -73,7 +75,7 @@ router.get("/like/:postid", async function (req, res) {
     post.like.push(user._id);
   } else {
     post.like.splice(post.like.indexOf(user._id), 1);
-  }
+  }+
   await post.save();
   res.json(post);
 });
@@ -235,31 +237,85 @@ router.post(
   isLoggedIn,
   upload.single("image"),
   async function (req, res) {
-    const user = await userModel.findOne({
-      username: req.session.passport.user,
-    });
+    try {
+      const user = await userModel.findOne({
+        username: req.session.passport.user,
+      });
 
-    if (req.body.category === "post") {
-      const post = await postModel.create({
-        user: user._id,
-        caption: req.body.caption,
-        picture: req.file.filename,
-      });
-      user.posts.push(post._id);
-    } else if (req.body.category === "story") {
-      let story = await storyModel.create({
-        story: req.file.filename,
-        user: user._id,
-      });
-      user.stories.push(story._id);
-    } else {
-      res.send("tez mat chalo");
+      if (req.body.category === "post") {
+
+        // Uploaded image path
+        const imagePath = "./public/images/uploads/" + req.file.filename;
+
+        console.log("Image:", req.file.filename);
+        console.log("Mime:", req.file.mimetype);
+
+        // AI Caption Generate
+        const aiCaption = await generateCaption(
+          imagePath,
+          req.file.mimetype
+        );
+
+        console.log("AI Caption:", aiCaption);
+
+        // User caption hai to wahi use karo,
+        // warna AI caption use karo
+        const finalCaption =
+          req.body.caption && req.body.caption.trim() !== ""
+            ? req.body.caption
+            : aiCaption;
+
+        // Save Post
+        const post = await postModel.create({
+          user: user._id,
+          caption: finalCaption,
+          picture: req.file.filename,
+        });
+
+        user.posts.push(post._id);
+
+      } else if (req.body.category === "story") {
+
+        const story = await storyModel.create({
+          story: req.file.filename,
+          user: user._id,
+        });
+
+        user.stories.push(story._id);
+
+      } else {
+        return res.status(400).send("Invalid category");
+      }
+
+      await user.save();
+      res.redirect("/feed");
+
+    } catch (err) {
+      console.error("Error:", err);
+      res.status(500).send("Something went wrong");
     }
-
-    await user.save();
-    res.redirect("/feed");
   }
 );
+
+router.post(
+    "/generate-caption",
+    isLoggedIn,
+    upload.single("image"),
+    async (req, res) => {
+
+        const imagePath =
+            "./public/images/uploads/" + req.file.filename;
+
+        const caption = await generateCaption(
+            imagePath,
+            req.file.mimetype
+        );
+
+        res.json({
+            caption
+        });
+
+    });
 
 router.post(
   "/upload",

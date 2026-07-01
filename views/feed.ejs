@@ -68,12 +68,12 @@
           <h3 class="likeval px-4 mt-2 text-sm leading-none tracking-tight">
             <%= post.like.length %> likes
           </h3>
-          <h2 class="text-white font-light text-sm mt-2">
-            <span class="font-semibold pl-4 pr-2">
-              <%= post.user.username %>
-            </span>
-            <%= post.caption %>
-          </h2>
+        <h2 class="text-white text-sm mt-2 px-4 leading-6 break-words">
+    <span class="font-semibold mr-2">
+        <%= post.user.username %>
+    </span>
+    <%= post.caption %>
+</h2>
         </div>
         <% }) %>
     </div>
