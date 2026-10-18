@@ -33,11 +33,14 @@
       <div class="px-6 mt-5">
         <a class="px-3 py-2 bg-zinc-800 text-xs rounded-md" href="/edit">Edit Profile</a>
       </div>
-      <div class="posts w-full flex gap-1 py-2 mt-5 flex-wrap">
+            <div class="posts w-full flex gap-1 py-2 mt-5 flex-wrap">
         <% if(user.posts.length>0){ %>
           <% user.posts.reverse().forEach(function(post){ %>
             <div class="post w-[32.5%] h-32 bg-sky-100">
-              <img class="w-full h-full object-cover" src="/images/uploads/<%= post.picture %>" alt="">
+              <img class="post-thumb w-full h-full object-cover cursor-pointer"
+                src="/images/uploads/<%= post.picture %>" alt=""
+                data-caption="<%= post.caption %>"
+                onerror="this.closest('.post').style.display='none'">
             </div>
           <% }) %>
         <% } else { %>
@@ -47,4 +50,51 @@
         <% } %>
       </div>
   </div>
+
+
+    <div id="lightbox" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/90 p-4">
+    <button id="lightbox-close" class="absolute top-4 right-4 text-white text-3xl" aria-label="Close">
+      <i class="ri-close-line"></i>
+    </button>
+    <div class="max-w-full max-h-full flex flex-col items-center">
+      <img id="lightbox-img" class="max-w-full max-h-[80vh] object-contain rounded" src="" alt="">
+      <p id="lightbox-caption" class="text-white text-sm mt-3 text-center break-words"></p>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var box = document.getElementById("lightbox");
+      var img = document.getElementById("lightbox-img");
+      var cap = document.getElementById("lightbox-caption");
+
+      function openBox(src, caption) {
+        img.src = src;
+        cap.textContent = caption || "";
+        box.classList.remove("hidden");
+        box.classList.add("flex");
+        document.body.style.overflow = "hidden";
+      }
+
+      function closeBox() {
+        box.classList.add("hidden");
+        box.classList.remove("flex");
+        img.src = "";
+        document.body.style.overflow = "";
+      }
+
+      document.addEventListener("click", function (e) {
+        var thumb = e.target.closest(".post-thumb");
+        if (thumb) {
+          openBox(thumb.src, thumb.dataset.caption);
+          return;
+        }
+        if (e.target.closest("#lightbox-close") || e.target === box) closeBox();
+      });
+
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") closeBox();
+      });
+    })();
+  </script> 
 <% include ./partials/footer.ejs %>

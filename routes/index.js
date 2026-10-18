@@ -97,7 +97,10 @@ router.get("/feed", isLoggedIn, async function (req, res) {
 });
 
 
-  let posts = await postModel.find().populate("user");
+ let posts = await postModel
+  .find({ user: { $in: [user._id, ...user.following] } })
+  .populate("user")
+  .sort({ _id: -1 });
 
   res.render("feed", {
     footer: true,
