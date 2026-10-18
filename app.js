@@ -5,7 +5,8 @@ var path = require('path');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
 var expressSession = require('express-session');
-var MongoStore = require('connect-mongo');
+var connectMongo = require('connect-mongo');
+var MongoStore = connectMongo.MongoStore || connectMongo.default || connectMongo;
 
 var indexRouter = require('./routes/index');
 var usersRouter = require('./routes/users');
