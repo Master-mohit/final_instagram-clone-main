@@ -5,13 +5,14 @@ var path = require('path');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
 var expressSession = require('express-session');
+var MongoStore = require('connect-mongo');
 
 var indexRouter = require('./routes/index');
 var usersRouter = require('./routes/users');
 const passport = require('passport');
 
 var app = express();
-
+app.set('trust proxy', 1);
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
@@ -19,8 +20,15 @@ app.set('view engine', 'ejs');
 app.use(expressSession({
   resave: false,
   saveUninitialized: false,
-  secret: "heyheyehhdd"
+  secret: process.env.SESSION_SECRET || "dev-secret",
+  store: MongoStore.create({ mongoUrl: process.env.MONGO_URI }),
+  cookie: {
+    maxAge: 1000 * 60 * 60 * 24 * 7, // 7 din
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax'
+  }
 }));
+
 app.use(passport.initialize());
 app.use(passport.session());
 passport.serializeUser(usersRouter.serializeUser());

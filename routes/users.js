@@ -8,7 +8,7 @@ mongoose.connect(process.env.MONGO_URI)
 
 const userSchema = mongoose.Schema({
   username: String,
-  name: String,
+  name: String, 
   email: String,
   password: String,
   picture: {
