@@ -75,7 +75,7 @@ router.get("/like/:postid", async function (req, res) {
     post.like.push(user._id);
   } else {
     post.like.splice(post.like.indexOf(user._id), 1);
-  }+
+  }
   await post.save();
   res.json(post);
 });
@@ -298,24 +298,33 @@ router.post(
 );
 
 router.post(
-    "/generate-caption",
-    isLoggedIn,
-    upload.single("image"),
-    async (req, res) => {
+  "/generate-caption",
+  isLoggedIn,
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ caption: "", error: "No image uploaded" });
+      }
 
-        const imagePath =
-            "./public/images/uploads/" + req.file.filename;
+      const imagePath = "./public/images/uploads/" + req.file.filename;
 
-        const caption = await generateCaption(
-            imagePath,
-            req.file.mimetype
-        );
+      const caption = await generateCaption(imagePath, req.file.mimetype);
 
-        res.json({
-            caption
+      if (!caption) {
+        return res.status(503).json({
+          caption: "",
+          error: "AI caption abhi available nahi hai, thodi der baad try karo",
         });
+      }
 
-    });
+      res.json({ caption });
+    } catch (err) {
+      console.error("Generate caption error:", err);
+      res.status(500).json({ caption: "", error: "Something went wrong" });
+    }
+  }
+);
 
 router.post(
   "/upload",

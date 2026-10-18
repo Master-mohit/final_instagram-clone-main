@@ -4,6 +4,9 @@
  * Module dependencies.
  */
 
+const dns = require("dns");
+dns.setServers(["8.8.8.8", "8.8.4.4"]);
+
 var app = require('../app');
 var debug = require('debug')('insta:server');
 var http = require('http');
