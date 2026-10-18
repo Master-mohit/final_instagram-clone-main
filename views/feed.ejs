@@ -7,29 +7,48 @@
         <i class="text-[1.4rem] ri-messenger-line"></i>
       </div>
     </div>
-    <div class="story px-3 flex gap-3 overflow-auto mt-5">
-      <a href="">
-        <div class="circle flex-shrink-0">
-          <div
-            class="gradient w-[18vw] h-[18vw] bg-sky-100 rounded-full bg-gradient-to-r from-purple-700 to-orange-500 flex items-center justify-center">
-            <div class="inner w-[92%] h-[92%] rounded-full overflow-hidden">
-              <img class="w-full h-full object-cover" src="/images/uploads/<%= user.picture %>" alt="">
-            </div>
-          </div>
-        </div>
-      </a>
-      <!-- <% stories.forEach(function(story){ %> -->
-        <!-- <a href="/story/<%= story.id %>"> -->
-          <div class="circle flex-shrink-0">
-            <div
-              class="gradient w-[18vw] h-[18vw] bg-sky-100 rounded-full bg-gradient-to-r from-purple-700 to-orange-500 flex items-center justify-center">
-              <div class="inner w-[92%] h-[92%] rounded-full overflow-hidden">
-                <img class="w-full h-full object-cover " src="https://i.pinimg.com/736x/15/29/de/1529dec3f7e010bd71a3b02f4fe9e156.jpg" alt="">
+     <div class="story px-3 flex gap-3 overflow-auto mt-5">
+      <% var ownIdx = storyGroups.findIndex(function(g){ return g.own; }); %>
+
+      <!-- Apni story -->
+      <div class="flex-shrink-0 text-center relative">
+        <% if (ownIdx !== -1) { %>
+          <button class="story-open" data-index="<%= ownIdx %>">
+            <div class="w-[18vw] h-[18vw] rounded-full bg-gradient-to-r from-purple-700 to-orange-500 flex items-center justify-center">
+              <div class="w-[92%] h-[92%] rounded-full overflow-hidden">
+                <img class="w-full h-full object-cover" src="/images/uploads/<%= user.picture %>" alt=""
+                  onerror="this.onerror=null;this.src='/images/uploads/def.png'">
               </div>
             </div>
-          </div>
+          </button>
+        <% } else { %>
+          <a href="/upload">
+            <div class="w-[18vw] h-[18vw] rounded-full bg-zinc-700 flex items-center justify-center">
+              <div class="w-[92%] h-[92%] rounded-full overflow-hidden">
+                <img class="w-full h-full object-cover" src="/images/uploads/<%= user.picture %>" alt=""
+                  onerror="this.onerror=null;this.src='/images/uploads/def.png'">
+              </div>
+            </div>
+          </a>
+        <% } %>
+        <a href="/upload" class="absolute bottom-4 right-0 w-5 h-5 bg-sky-500 rounded-full text-xs flex items-center justify-center border-2 border-zinc-900">
+          <i class="ri-add-line"></i>
         </a>
-        <!-- <% }) %> -->
+        <p class="text-[10px] mt-1 w-[18vw] truncate opacity-70">Your story</p>
+      </div>
+
+      <!-- Dusron ki stories -->
+      <% storyGroups.forEach(function(g, i){ if (g.own) return; %>
+        <button class="story-open flex-shrink-0 text-center" data-index="<%= i %>">
+          <div class="w-[18vw] h-[18vw] rounded-full bg-gradient-to-r from-purple-700 to-orange-500 flex items-center justify-center">
+            <div class="w-[92%] h-[92%] rounded-full overflow-hidden">
+              <img class="w-full h-full object-cover" src="/images/uploads/<%= g.picture %>" alt=""
+                onerror="this.onerror=null;this.src='/images/uploads/def.png'">
+            </div>
+          </div>
+          <p class="text-[10px] mt-1 w-[18vw] truncate opacity-70"><%= g.username %></p>
+        </button>
+      <% }) %>
     </div>
     <div class="posts parent mb-20">
       <% posts.forEach(function(post){ %>
@@ -183,6 +202,339 @@
       })
   </script>
   
+
+    <div id="story-viewer" class="fixed inset-0 z-[100] hidden flex-col bg-black">
+    <div class="px-3 pt-3">
+      <div id="story-bars" class="flex gap-1"></div>
+      <div class="flex items-center justify-between mt-3 text-white">
+        <div class="flex items-center gap-2">
+          <img id="story-avatar" class="w-8 h-8 rounded-full object-cover" src="" alt="">
+          <span id="story-name" class="text-sm font-semibold"></span>
+          <span id="story-time" class="text-xs opacity-60"></span>
+        </div>
+        <div class="flex items-center gap-4">
+          <button id="story-delete" class="hidden text-xl" aria-label="Delete story"><i class="ri-delete-bin-line"></i></button>
+          <button id="story-close" class="text-3xl" aria-label="Close"><i class="ri-close-line"></i></button>
+        </div>
+      </div>
+    </div>
+
+    <div id="story-stage" class="flex-1 flex items-center justify-center min-h-0 p-2">
+      <img id="story-img" class="max-w-full max-h-full object-contain select-none" src="" alt="">
+    </div>
+
+    <p id="story-caption" class="hidden px-5 pb-3 text-white text-sm text-center break-words"></p>
+
+    <div class="px-5 pb-5 flex items-center justify-between text-white">
+      <button id="story-viewers-btn" class="hidden text-sm flex items-center gap-2">
+        <i class="ri-eye-line text-lg"></i><span id="story-viewcount">0</span>
+        <i class="ri-heart-3-fill text-red-500 text-lg ml-3"></i><span id="story-likecount-own">0</span>
+      </button>
+      <span></span>
+      <button id="story-like" class="hidden text-3xl" aria-label="Like story"><i class="ri-heart-3-line"></i></button>
+    </div>
+
+    <!-- Viewers list (sirf apni story me) -->
+    <div id="viewers-sheet" class="hidden absolute inset-x-0 bottom-0 max-h-[60%] bg-zinc-900 text-white rounded-t-2xl p-4 overflow-auto">
+      <div class="flex justify-between items-center mb-3">
+        <h4 class="text-sm font-semibold">Viewers</h4>
+        <button id="viewers-close" class="text-2xl" aria-label="Close"><i class="ri-close-line"></i></button>
+      </div>
+      <div id="viewers-list"></div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var groups = <%- storyData %>;
+      var $ = function (id) { return document.getElementById(id); };
+      var viewer = $("story-viewer"), imgEl = $("story-img"), bars = $("story-bars");
+      var nameEl = $("story-name"), timeEl = $("story-time"), avatar = $("story-avatar");
+      var delBtn = $("story-delete"), capEl = $("story-caption");
+      var likeBtn = $("story-like"), viewersBtn = $("story-viewers-btn");
+      var sheet = $("viewers-sheet"), list = $("viewers-list");
+      var DURATION = 5000, gi = 0, si = 0, timer = null;
+
+      function ago(t) {
+        var m = Math.floor((Date.now() - new Date(t)) / 60000);
+        if (m < 1) return "now";
+        if (m < 60) return m + "m";
+        return Math.floor(m / 60) + "h";
+      }
+
+      function setHeart(liked) {
+        likeBtn.innerHTML = liked
+          ? '<i class="ri-heart-3-fill text-red-500"></i>'
+          : '<i class="ri-heart-3-line"></i>';
+      }
+
+      function openViewer(index) {
+        gi = index; si = 0;
+        viewer.classList.remove("hidden");
+        viewer.classList.add("flex");
+        document.body.style.overflow = "hidden";
+        show();
+      }
+
+      function closeViewer() {
+        clearTimeout(timer);
+        sheet.classList.add("hidden");
+        viewer.classList.add("hidden");
+        viewer.classList.remove("flex");
+        imgEl.src = "";
+        document.body.style.overflow = "";
+      }
+
+      function show() {
+        clearTimeout(timer);
+        var g = groups[gi], item = g.items[si];
+
+        imgEl.src = item.src;
+        nameEl.textContent = g.username;
+        timeEl.textContent = ago(item.time);
+        avatar.src = "/images/uploads/" + g.picture;
+        avatar.onerror = function () { avatar.onerror = null; avatar.src = "/images/uploads/def.png"; };
+
+        // Caption story ke neeche
+        capEl.textContent = item.caption || "";
+        capEl.classList.toggle("hidden", !item.caption);
+
+        // Owner: delete + viewers count | Dusre: like button
+        delBtn.classList.toggle("hidden", !g.own);
+        viewersBtn.classList.toggle("hidden", !g.own);
+        likeBtn.classList.toggle("hidden", g.own);
+        if (g.own) {
+          $("story-viewcount").textContent = item.viewCount;
+          $("story-likecount-own").textContent = item.likeCount;
+        } else {
+          setHeart(item.liked);
+          if (!item.seenSent) {
+            item.seenSent = true;
+            fetch("/story/" + item.id + "/view", { method: "POST" }).catch(function () {});
+          }
+        }
+
+        bars.innerHTML = g.items.map(function (_, i) {
+          return '<div class="flex-1 h-[3px] bg-white/30 rounded overflow-hidden"><div class="h-full bg-white" style="width:' + (i < si ? 100 : 0) + '%"></div></div>';
+        }).join("");
+        var fill = bars.children[si].firstChild;
+        fill.style.transition = "none";
+        fill.style.width = "0%";
+        void fill.offsetWidth;
+        fill.style.transition = "width " + DURATION + "ms linear";
+        fill.style.width = "100%";
+
+        timer = setTimeout(next, DURATION);
+      }
+
+      function next() {
+        if (si < groups[gi].items.length - 1) { si++; show(); }
+        else if (gi < groups.length - 1) { gi++; si = 0; show(); }
+        else closeViewer();
+      }
+      function prev() {
+        if (si > 0) { si--; show(); }
+        else if (gi > 0) { gi--; si = groups[gi].items.length - 1; show(); }
+        else show();
+      }
+
+      document.querySelector(".story").addEventListener("click", function (e) {
+        var btn = e.target.closest(".story-open");
+        if (btn) openViewer(Number(btn.dataset.index));
+      });
+
+      $("story-stage").addEventListener("click", function (e) {
+        if (e.clientX / window.innerWidth < 0.33) prev(); else next();
+      });
+      $("story-close").addEventListener("click", closeViewer);
+
+      // Like
+      likeBtn.addEventListener("click", function () {
+        var item = groups[gi].items[si];
+        fetch("/story/" + item.id + "/like", { method: "POST" })
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (typeof d.liked === "boolean") {
+              item.liked = d.liked;
+              item.likeCount = d.count;
+              setHeart(d.liked);
+            }
+          });
+      });
+
+      // Viewers list kholo (story ruk jayegi)
+      viewersBtn.addEventListener("click", function () {
+        var item = groups[gi].items[si];
+        clearTimeout(timer);
+        list.textContent = "Loading...";
+        sheet.classList.remove("hidden");
+        fetch("/story/" + item.id + "/viewers")
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            list.textContent = "";
+            if (!d.viewers || !d.viewers.length) {
+              list.textContent = "Abhi kisi ne nahi dekhi.";
+              return;
+            }
+            d.viewers.forEach(function (v) {
+              var row = document.createElement("div");
+              row.className = "flex items-center justify-between py-2";
+              var left = document.createElement("div");
+              left.className = "flex items-center gap-3";
+              var im = document.createElement("img");
+              im.className = "w-9 h-9 rounded-full object-cover";
+              im.src = "/images/uploads/" + v.picture;
+              im.onerror = function () { im.onerror = null; im.src = "/images/uploads/def.png"; };
+              var nm = document.createElement("span");
+              nm.className = "text-sm";
+              nm.textContent = v.username;
+              left.appendChild(im); left.appendChild(nm);
+              row.appendChild(left);
+              if (v.liked) {
+                var h = document.createElement("i");
+                h.className = "ri-heart-3-fill text-red-500";
+                row.appendChild(h);
+              }
+              list.appendChild(row);
+            });
+          })
+          .catch(function () { list.textContent = "Load nahi hua"; });
+      });
+      $("viewers-close").addEventListener("click", function () {
+        sheet.classList.add("hidden");
+        show(); // story dobara chalu
+      });
+
+      // Apni story delete
+      delBtn.addEventListener("click", function () {
+        var item = groups[gi].items[si];
+        clearTimeout(timer);
+        if (!confirm("Is story ko delete karna hai?")) { show(); return; }
+        fetch("/story/" + item.id, { method: "DELETE" })
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (d.success) location.reload();
+            else { alert(d.error || "Delete nahi hua"); show(); }
+          })
+          .catch(function () { alert("Network error"); show(); });
+      });
+
+      document.addEventListener("keydown", function (e) {
+        if (viewer.classList.contains("hidden")) return;
+        if (e.key === "Escape") closeViewer();
+        if (e.key === "ArrowRight") next();
+        if (e.key === "ArrowLeft") prev();
+      });
+    })();
+  </script>
+
+  <script>
+    (function () {
+      var groups = <%- storyData %>;
+      var viewer = document.getElementById("story-viewer");
+      var imgEl = document.getElementById("story-img");
+      var bars = document.getElementById("story-bars");
+      var nameEl = document.getElementById("story-name");
+      var timeEl = document.getElementById("story-time");
+      var avatar = document.getElementById("story-avatar");
+      var delBtn = document.getElementById("story-delete");
+      var DURATION = 5000;
+      var gi = 0, si = 0, timer = null;
+
+      function ago(t) {
+        var m = Math.floor((Date.now() - new Date(t)) / 60000);
+        if (m < 1) return "now";
+        if (m < 60) return m + "m";
+        return Math.floor(m / 60) + "h";
+      }
+
+      function openViewer(index) {
+        gi = index; si = 0;
+        viewer.classList.remove("hidden");
+        viewer.classList.add("flex");
+        document.body.style.overflow = "hidden";
+        show();
+      }
+
+      function closeViewer() {
+        clearTimeout(timer);
+        viewer.classList.add("hidden");
+        viewer.classList.remove("flex");
+        imgEl.src = "";
+        document.body.style.overflow = "";
+      }
+
+      function show() {
+        clearTimeout(timer);
+        var g = groups[gi], item = g.items[si];
+        imgEl.src = item.src;
+        nameEl.textContent = g.username;
+        timeEl.textContent = ago(item.time);
+        avatar.src = "/images/uploads/" + g.picture;
+        avatar.onerror = function () { avatar.onerror = null; avatar.src = "/images/uploads/def.png"; };
+        delBtn.classList.toggle("hidden", !g.own);
+
+        bars.innerHTML = g.items.map(function (_, i) {
+          return '<div class="flex-1 h-[3px] bg-white/30 rounded overflow-hidden"><div class="h-full bg-white" style="width:' + (i < si ? 100 : 0) + '%"></div></div>';
+        }).join("");
+
+        var fill = bars.children[si].firstChild;
+        fill.style.transition = "none";
+        fill.style.width = "0%";
+        void fill.offsetWidth;
+        fill.style.transition = "width " + DURATION + "ms linear";
+        fill.style.width = "100%";
+
+        timer = setTimeout(next, DURATION);
+      }
+
+      function next() {
+        if (si < groups[gi].items.length - 1) { si++; show(); }
+        else if (gi < groups.length - 1) { gi++; si = 0; show(); }
+        else closeViewer();
+      }
+
+      function prev() {
+        if (si > 0) { si--; show(); }
+        else if (gi > 0) { gi--; si = groups[gi].items.length - 1; show(); }
+        else show();
+      }
+
+      // Circle pe click
+      document.querySelector(".story").addEventListener("click", function (e) {
+        var btn = e.target.closest(".story-open");
+        if (btn) openViewer(Number(btn.dataset.index));
+      });
+
+      // Image ke left 1/3 pe tap = back, baaki = next
+      document.getElementById("story-stage").addEventListener("click", function (e) {
+        var x = e.clientX / window.innerWidth;
+        if (x < 0.33) prev(); else next();
+      });
+
+      document.getElementById("story-close").addEventListener("click", closeViewer);
+      document.addEventListener("keydown", function (e) {
+        if (viewer.classList.contains("hidden")) return;
+        if (e.key === "Escape") closeViewer();
+        if (e.key === "ArrowRight") next();
+        if (e.key === "ArrowLeft") prev();
+      });
+
+      // Apni story delete
+      delBtn.addEventListener("click", function () {
+        var item = groups[gi].items[si];
+        clearTimeout(timer);
+        if (!confirm("Is story ko delete karna hai?")) { show(); return; }
+        fetch("/story/" + item.id, { method: "DELETE" })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data.success) location.reload();
+            else { alert(data.error || "Delete nahi hua"); show(); }
+          })
+          .catch(function () { alert("Network error"); show(); });
+      });
+    })();
+  </script>
 
 
   <% include ./partials/footer.ejs %>

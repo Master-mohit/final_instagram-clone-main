@@ -100,14 +100,101 @@ router.delete("/post/:id", isLoggedIn, async function (req, res) {
 
 
 
-router.get("/story", isLoggedIn, async function (req, res) {
+router.delete("/story/:id", isLoggedIn, async function (req, res) {
   try {
-    const user = await userModel.findOne({ username: req.session.passport.user }).populate('stories');
-    console.log(user); 
-    res.render("story", { footer: false, user });
+    const user = await userModel.findOne({
+      username: req.session.passport.user,
+    });
+    const story = await storyModel.findById(req.params.id);
+
+    if (!story) return res.status(404).json({ error: "Story not found" });
+
+    // Sirf owner delete kar sakta hai
+    if (story.user.toString() !== user._id.toString()) {
+      return res.status(403).json({ error: "Not allowed" });
+    }
+
+    user.stories.pull(story._id);
+    await user.save();
+
+    fs.unlink(
+      path.join(__dirname, "../public/images/uploads", path.basename(story.story)),
+      () => {}
+    );
+    await story.deleteOne();
+
+    res.json({ success: true });
   } catch (err) {
-    console.error(err);
-    res.status(500).send("Internal Server Error");
+    console.error("Delete story error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+
+// Story dekhi: viewer record karo (owner khud count nahi hota)
+router.post("/story/:id/view", isLoggedIn, async function (req, res) {
+  try {
+    const user = await userModel.findOne({ username: req.session.passport.user });
+    const story = await storyModel.findById(req.params.id);
+    if (!story) return res.status(404).json({ error: "Story not found" });
+
+    const me = user._id.toString();
+    const already = story.viewers.some((v) => v.user.toString() === me);
+    if (story.user.toString() !== me && !already) {
+      story.viewers.push({ user: user._id });
+      await story.save();
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Story view error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Story like / unlike
+router.post("/story/:id/like", isLoggedIn, async function (req, res) {
+  try {
+    const user = await userModel.findOne({ username: req.session.passport.user });
+    const story = await storyModel.findById(req.params.id);
+    if (!story) return res.status(404).json({ error: "Story not found" });
+
+    const idx = story.likes.findIndex((id) => id.toString() === user._id.toString());
+    if (idx === -1) story.likes.push(user._id);
+    else story.likes.splice(idx, 1);
+    await story.save();
+
+    res.json({ liked: idx === -1, count: story.likes.length });
+  } catch (err) {
+    console.error("Story like error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Viewers list: sirf story ka owner dekh sakta hai
+router.get("/story/:id/viewers", isLoggedIn, async function (req, res) {
+  try {
+    const user = await userModel.findOne({ username: req.session.passport.user });
+    const story = await storyModel
+      .findById(req.params.id)
+      .populate("viewers.user", "username picture");
+    if (!story) return res.status(404).json({ error: "Story not found" });
+    if (story.user.toString() !== user._id.toString()) {
+      return res.status(403).json({ error: "Not allowed" });
+    }
+
+    const likedSet = new Set(story.likes.map((id) => id.toString()));
+    const viewers = story.viewers
+      .filter((v) => v.user)
+      .map((v) => ({
+        username: v.user.username,
+        picture: v.user.picture,
+        liked: likedSet.has(v.user._id.toString()),
+      }));
+
+    res.json({ viewers, likeCount: story.likes.length });
+  } catch (err) {
+    console.error("Story viewers error:", err);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
@@ -129,28 +216,60 @@ router.get("/feed", isLoggedIn, async function (req, res) {
     .findOne({ username: req.session.passport.user })
     .populate("posts");
 
-  let stories = await storyModel.find({ user: { $ne: user._id } })
-  .populate("user");
+  // Stories: apni + following, sirf pichle 24 ghante ki
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const storyDocs = await storyModel
+    .find({
+      user: { $in: [user._id, ...user.following] },
+      createdAt: { $gte: since },
+    })
+    .populate("user", "username picture")
+    .sort({ createdAt: 1 });
 
-  var uniq = {};
- var filtered = stories.filter(item => {
-  if (item.user && !uniq[item.user.id]) {
-    uniq[item.user.id] = " ";
-    return true;
-  } else return false;
+  const groupsMap = {};
+  storyDocs.forEach(function (s) {
+    if (!s.user) return;
+    const key = s.user._id.toString();
+    if (!groupsMap[key]) {
+      groupsMap[key] = {
+        userId: key,
+        username: s.user.username,
+        picture: s.user.picture,
+        own: key === user._id.toString(),
+        items: [],
+      };
+    }
+  const me = user._id.toString();
+groupsMap[key].items.push({
+  id: s._id.toString(),
+  src: "/images/uploads/" + s.story,
+  time: s.createdAt,
+  caption: s.caption || "",
+  likeCount: s.likes.length,
+  liked: s.likes.some((id) => id.toString() === me),
+  viewCount: s.viewers.length,
 });
+  });
 
+  // Apni story sabse pehle
+  const storyGroups = Object.values(groupsMap).sort(
+    (a, b) => (b.own ? 1 : 0) - (a.own ? 1 : 0)
+  );
+  // <script> ke andar safe embed ke liye
+  const storyData = JSON.stringify(storyGroups).replace(/</g, "\\u003c");
 
- let posts = await postModel
-  .find({ user: { $in: [user._id, ...user.following] } })
-  .populate("user")
-  .sort({ _id: -1 });
+  let posts = await postModel
+    .find({ user: { $in: [user._id, ...user.following] } })
+    .populate("user")
+    .sort({ _id: -1 });
+  posts = posts.filter((p) => p.user);
 
   res.render("feed", {
     footer: true,
     user,
     posts,
-    stories: filtered,
+    storyGroups,
+    storyData,
     dater: utils.formatRelativeTime,
   });
 });
@@ -279,10 +398,7 @@ router.post("/update", isLoggedIn, async function (req, res) {
   });
 });
 
-router.post(
-  "/post",
-  isLoggedIn,
-  upload.single("image"),
+router.post( "/post", isLoggedIn, upload.single("image"),
   async function (req, res) {
     try {
       const user = await userModel.findOne({
@@ -324,9 +440,10 @@ router.post(
       } else if (req.body.category === "story") {
 
         const story = await storyModel.create({
-          story: req.file.filename,
-          user: user._id,
-        });
+        story: req.file.filename,
+        caption: (req.body.caption || "").trim().slice(0, 200),
+        user: user._id,
+});
 
         user.stories.push(story._id);
 

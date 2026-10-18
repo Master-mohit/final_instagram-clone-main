@@ -38,10 +38,10 @@
         enctype="multipart/form-data"
         class="w-full px-6 py-5">
 
-        <input
-            type="hidden"
-            name="category"
-            value="post">
+        <select name="category" class="bg-zinc-800 text-white text-sm px-3 py-2 rounded-md">
+  <option value="post" <%= (typeof category !== 'undefined' && category === 'story') ? '' : 'selected' %>>Post</option>
+  <option value="story" <%= (typeof category !== 'undefined' && category === 'story') ? 'selected' : '' %>>Story</option>
+</select>
 
         <input
             id="imageinp"
@@ -145,6 +145,18 @@ document.querySelector("#generateAI").addEventListener("click", async () => {
     "🤖 Generate AI Caption";
 
 });
+
+
+  (function () {
+    var sel = document.querySelector('[name="category"]');
+    var ai = document.getElementById("ai-caption-box");
+    if (!sel || !ai) return;
+    function toggle() {
+      ai.style.display = sel.value === "story" ? "none" : "";
+    }
+    sel.addEventListener("change", toggle);
+    toggle(); // page khulte hi (/upload?category=story) check
+  })();
 
 </script>
 
