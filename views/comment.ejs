@@ -1,166 +1,227 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Comments</title>
-    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body, html {
-            width: 100%;
-            height: 100%;
-        }
-        #main {
-            width: 100vw;
-            height: 100vh;
-            background-color: rgb(24,24,27);
-            color: #fff;
-        }
-        #top {
-            padding: 2vw 3vw;
-            width: 100vw;
-            height: 50px;
-            background-color: rgb(24,24,27);
-            display: flex;
-            align-items: center;
-            gap: 80px;
-           
-        }
-        #top h1 {
-            font-size: 8vw;
-        }
-        #top1 {
-            padding-left: 4vw;
-            width: 100vw;
-            height: 70px;
-            display: flex;
-            align-items: center;
-            gap: 30px;
-        }
-        .profile-pic {
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            background-color: red;
-            overflow: hidden;
-        }
-        .profile-pic img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        #bottom {
-            position: fixed;
-            top: 90%;
-            padding: 2vw;
-            width: 50vw;
-            display: flex;
-            align-items: center;
-            gap: 30px;
-        }
-        #bottom h1{
-            font-size: 3vw;
-        }
-        input {
-            padding: 2vw 3vw;
-            color: #fff;
-            outline: none;
-            border: none;
-           margin-right: 6vw;
-           background-color: rgb(24,24,27);
-        }
-        a {
-           text-decoration: none;
-            color: #fff;
+<% include ./partials/header.ejs %>
+  <div class="w-full min-h-screen bg-zinc-900 text-white">
 
-        }
-        #username h1{
-            font-size: 8vw;
-        }
-        .comment {
-            display: flex;
-            gap: 20px;
-            margin-bottom: 10px;
-            margin-left: 5vw;
-        }
-        .comment .profile-pic {
-            flex: 0 0 60px;
-        }
-        .comment .comment-content {
-            flex: 1;
-        }
-        .comment h1 {
-            margin-bottom: 5px;
-        }
-        .comment p {
-            margin: 0;
-        }
-        
-    </style>
-</head>
-<body>
-    <div id="main">
-        <div id="top">
-            <a href="/feed"><h1><i class="ri-arrow-left-line"></i></h1></a>
-            <h1>Comments</h1>
-        </div>
-        <div id="top1">
-            <!-- <div class="profile-pic">
-                <img src="/images/uploads/<%=user.picture%>" alt="Profile Picture">
-            </div>
-            <div id="username">
-                <h1><%=user.username%></h1>
-                <h2 id="message">Message goes here</h2>
-            </div> -->
-        </div>
-        <div id="commentSection"></div>
-        <div id="bottom">
-            <div class="profile-pic">
-                <img src="/images/uploads/<%=user.picture%>" alt="Profile Picture">
-            </div>
-            <div id="naam">
-                <input id="commentInput" type="text" placeholder="Add a comment for...">
-                <input id="postComment" type="button" value="Post">
-            </div>
-        </div>
+    <div class="sticky top-0 z-10 bg-zinc-900 border-b border-zinc-800 px-4 py-3 flex items-center gap-4">
+      <a href="/feed" class="text-2xl" aria-label="Back"><i class="ri-arrow-left-line"></i></a>
+      <h3 class="text-base font-semibold">Comments</h3>
     </div>
-    <script>
-        document.getElementById('postComment').addEventListener('click', function() {
-            const commentText = document.getElementById('commentInput').value.trim();
-            if (commentText !== '') {
-                const username = "<%=user.username%>";
-                const profileImage = "/images/uploads/<%=user.picture%>";
-                appendComment(username, commentText, profileImage);
-                document.getElementById('commentInput').value = '';
-                document.getElementById('bottom').style.display = 'flex'; 
-            }
+
+    <!-- Post ka caption -->
+    <div class="flex gap-3 px-4 py-4 border-b border-zinc-800">
+      <img class="w-9 h-9 rounded-full object-cover flex-shrink-0"
+        src="/images/uploads/<%= post.user.picture %>" alt=""
+        onerror="this.onerror=null;this.src='/images/uploads/def.png'">
+      <div class="text-sm break-words min-w-0">
+        <span class="font-semibold mr-2"><%= post.user.username %></span><%= post.caption %>
+      </div>
+    </div>
+
+    <div id="comment-list" class="px-4 pt-2 pb-48"></div>
+   <div id="empty-msg" class="hidden text-center -mt-40 pb-48 px-6">
+  <p class="text-xl font-bold">No comments yet.</p>
+  <p class="text-sm opacity-50 mt-1">Start the conversation.</p>
+</div>
+  </div>
+
+  <!-- Niche fixed comment box -->
+  <div class="fixed bottom-0 inset-x-0 z-20 bg-zinc-900 border-t border-zinc-800" style="padding-bottom: env(safe-area-inset-bottom, 0px)">
+    <div id="reply-bar" class="hidden items-center justify-between px-4 py-2 bg-zinc-800 text-xs">
+      <span>Replying to <b id="reply-name"></b></span>
+      <button id="reply-cancel" aria-label="Cancel reply"><i class="ri-close-line text-base"></i></button>
+    </div>
+    <div id="emoji-row" class="flex justify-between px-5 pt-3 text-2xl">
+      <button type="button" data-e="❤️">❤️</button>
+      <button type="button" data-e="🙌">🙌</button>
+      <button type="button" data-e="🔥">🔥</button>
+      <button type="button" data-e="👏">👏</button>
+      <button type="button" data-e="😢">😢</button>
+      <button type="button" data-e="😍">😍</button>
+      <button type="button" data-e="😮">😮</button>
+      <button type="button" data-e="😂">😂</button>
+    </div>
+    <div class="flex items-center gap-3 px-4 py-3">
+      <img id="me-avatar" class="w-9 h-9 rounded-full object-cover flex-shrink-0" src="" alt="">
+
+<input id="comment-input" type="text" maxlength="500" autocomplete="off"
+  placeholder="Add a comment..."
+  class="flex-1 min-w-0 bg-transparent outline-none text-base text-white caret-white placeholder-zinc-500"
+  style="color:#fff; -webkit-text-fill-color:#fff;">
+
+      <button id="comment-post" disabled class="text-sky-500 font-semibold text-sm opacity-40">Post</button>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var data = <%- commentData %>;
+      var state = data.comments;
+      var openReplies = {};
+      var replyTo = null; // main comment ki id
+
+      var $ = function (id) { return document.getElementById(id); };
+      var list = $("comment-list"), input = $("comment-input"), postBtn = $("comment-post");
+
+      function el(tag, cls) { var e = document.createElement(tag); if (cls) e.className = cls; return e; }
+      function setAvatar(img, pic) {
+        img.src = "/images/uploads/" + pic;
+        img.onerror = function () { img.onerror = null; img.src = "/images/uploads/def.png"; };
+      }
+      function ago(t) {
+        var s = Math.floor((Date.now() - new Date(t)) / 1000);
+        if (s < 60) return "now";
+        var m = Math.floor(s / 60); if (m < 60) return m + "m";
+        var h = Math.floor(m / 60); if (h < 24) return h + "h";
+        var d = Math.floor(h / 24); if (d < 7) return d + "d";
+        return Math.floor(d / 7) + "w";
+      }
+      function heartHTML(liked) {
+        return liked ? '<i class="ri-heart-3-fill text-red-500"></i>' : '<i class="ri-heart-3-line opacity-60"></i>';
+      }
+
+      setAvatar($("me-avatar"), data.me.picture);
+
+      function byTimeAsc(a, b) { return new Date(a.time) - new Date(b.time); }
+      function byTimeDesc(a, b) { return new Date(b.time) - new Date(a.time); }
+
+      function row(c, isReply) {
+        var wrap = el("div", "flex gap-3 py-3" + (isReply ? " ml-12" : ""));
+
+        var img = el("img", "rounded-full object-cover flex-shrink-0 " + (isReply ? "w-7 h-7" : "w-9 h-9"));
+        setAvatar(img, c.picture);
+
+        var body = el("div", "flex-1 min-w-0");
+        var line = el("div", "text-sm break-words");
+        var nm = el("span", "font-semibold mr-2"); nm.textContent = c.username;
+        var tx = el("span"); tx.textContent = c.text;
+        line.appendChild(nm); line.appendChild(tx);
+
+        var meta = el("div", "flex items-center gap-4 mt-1 text-xs opacity-60");
+        var tm = el("span"); tm.textContent = ago(c.time);
+        meta.appendChild(tm);
+
+        var likes = el("span"); likes.textContent = c.likeCount > 0 ? c.likeCount + (c.likeCount === 1 ? " like" : " likes") : "";
+        if (c.likeCount > 0) meta.appendChild(likes);
+
+        var rb = el("button", "font-semibold"); rb.textContent = "Reply";
+        rb.addEventListener("click", function () {
+          replyTo = isReply ? c.parent : c.id;
+          $("reply-name").textContent = c.username;
+          var bar = $("reply-bar"); bar.classList.remove("hidden"); bar.classList.add("flex");
+          input.value = "@" + c.username + " ";
+          input.focus();
+          updateBtn();
         });
-    
-        function appendComment(username, commentText, picture) {
-            const commentHtml = `
-            <div class="comment">
-                <div class="profile-pic">
-                    <img src="${picture}" alt="Profile Picture">
-                </div>
-                <div class="comment-content">
-                    <h1 style="font-size: 5vw;">${username}</h1> <!-- Adjusted font size here -->
-                    <p>${commentText}</p>
-                </div>
-            </div>
-            `;
-            const commentBox = document.querySelector('#commentSection');
-            if (commentBox) {
-                commentBox.insertAdjacentHTML('beforeend', commentHtml);
-            } else {
-                console.error("Error: commentSection not found");
-            }
+        meta.appendChild(rb);
+
+        if (c.canDelete) {
+          var db = el("button"); db.innerHTML = '<i class="ri-delete-bin-line"></i>';
+          db.setAttribute("aria-label", "Delete comment");
+          db.addEventListener("click", function () {
+            if (!confirm("Delete this comment?")) return;
+            fetch("/comment/" + c.id, { method: "DELETE" })
+              .then(function (r) { return r.json(); })
+              .then(function (d) {
+                if (d.success) {
+                  state = state.filter(function (x) { return x.id !== c.id && x.parent !== c.id; });
+                  render();
+                } else alert(d.error || "Couldn't delete the comment.");
+              })
+             .catch(function () { alert("Network error. Please try again."); });
+          });
+          meta.appendChild(db);
         }
-    </script>
-    
-</body>
-</html>
+
+        body.appendChild(line); body.appendChild(meta);
+
+        var heart = el("button", "text-lg flex-shrink-0 mt-1");
+        heart.innerHTML = heartHTML(c.liked);
+        heart.setAttribute("aria-label", "Like comment");
+        heart.addEventListener("click", function () {
+          c.liked = !c.liked;
+          c.likeCount += c.liked ? 1 : -1;
+          render(); // turant dikhao
+          fetch("/comment/like/" + c.id, { method: "POST" })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+              if (typeof d.liked === "boolean") { c.liked = d.liked; c.likeCount = d.count; render(); }
+            }).catch(function () {});
+        });
+
+        wrap.appendChild(img); wrap.appendChild(body); wrap.appendChild(heart);
+        return wrap;
+      }
+
+      function render() {
+        list.textContent = "";
+        var tops = state.filter(function (c) { return !c.parent; }).sort(byTimeDesc);
+        $("empty-msg").classList.toggle("hidden", tops.length > 0);
+
+        tops.forEach(function (c) {
+          list.appendChild(row(c, false));
+          var replies = state.filter(function (r) { return r.parent === c.id; }).sort(byTimeAsc);
+          if (!replies.length) return;
+
+          var toggle = el("button", "ml-12 text-xs opacity-60 font-semibold flex items-center gap-2 mb-1");
+          toggle.textContent = openReplies[c.id]
+            ? "Hide replies"
+            : "View " + replies.length + (replies.length === 1 ? " reply" : " replies");
+          toggle.addEventListener("click", function () { openReplies[c.id] = !openReplies[c.id]; render(); });
+          list.appendChild(toggle);
+
+          if (openReplies[c.id]) replies.forEach(function (r) { list.appendChild(row(r, true)); });
+        });
+      }
+
+      function updateBtn() {
+        var ok = input.value.trim().length > 0;
+        postBtn.disabled = !ok;
+        postBtn.style.opacity = ok ? "1" : "0.4";
+      }
+
+      function resetReply() {
+        replyTo = null;
+        var bar = $("reply-bar"); bar.classList.add("hidden"); bar.classList.remove("flex");
+      }
+
+      function submit() {
+        var text = input.value.trim();
+        if (!text || postBtn.disabled) return;
+        postBtn.disabled = true;
+
+        fetch("/comment/" + data.postId, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: text, parent: replyTo }),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (d.comment) {
+              state.push(d.comment);
+              if (d.comment.parent) openReplies[d.comment.parent] = true;
+              input.value = "";
+              resetReply();
+              render();
+              if (!d.comment.parent) window.scrollTo({ top: 0, behavior: "smooth" });
+            } else alert(d.error || "Couldn't post your comment.");
+          })
+            .catch(function () { alert("Network error. Please try again."); })
+          .finally(updateBtn);
+      }
+
+      input.addEventListener("input", updateBtn);
+      input.addEventListener("keydown", function (e) { if (e.key === "Enter") submit(); });
+      postBtn.addEventListener("click", submit);
+      $("reply-cancel").addEventListener("click", function () { resetReply(); input.value = ""; updateBtn(); });
+
+      $("emoji-row").addEventListener("click", function (e) {
+        var b = e.target.closest("[data-e]");
+        if (!b) return;
+        input.value += b.dataset.e;
+        input.focus();
+        updateBtn();
+      });
+
+      render();
+    })();
+  </script>
+<% include ./partials/footer.ejs %>

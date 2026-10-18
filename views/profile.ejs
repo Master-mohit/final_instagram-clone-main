@@ -93,7 +93,7 @@
 
       delBtn.addEventListener("click", function () {
         if (!currentThumb) return;
-        if (!confirm("Is post ko delete karna hai? Ye wapas nahi aayegi.")) return;
+        if (!confirm("Delete this post? This can't be undone.")) return;
 
         var thumb = currentThumb;
         delBtn.disabled = true;
@@ -105,10 +105,10 @@
             if (data.success) {
               location.reload(); // post count bhi update ho jayega
             } else {
-              alert(data.error || "Delete nahi hua");
+              alert(data.error || "Couldn't delete the post.");
             }
           })
-          .catch(function () { alert("Network error, dobara try karo"); })
+          .catch(function () { alert("Network error. Please try again."); })
           .finally(function () {
             delBtn.disabled = false;
             delBtn.innerHTML = '<i class="ri-delete-bin-line mr-1"></i>Delete post';

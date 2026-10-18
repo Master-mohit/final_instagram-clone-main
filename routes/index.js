@@ -5,6 +5,7 @@ const localStrategy = require("passport-local");
 const userModel = require("./users");
 const postModel = require("./posts");
 const storyModel = require("./story");
+const commentModel = require("./comment");
 passport.use(new localStrategy(userModel.authenticate()));
 const upload = require("./multer");
 const utils = require("../utils/utils");
@@ -13,7 +14,6 @@ const fs = require("fs");
 const path = require("path");
 
 
-// GET
 router.get("/", function (req, res) {
   res.render("index", { footer: false });
 });
@@ -22,36 +22,130 @@ router.get("/login", function (req, res) {
   res.render("login", { footer: false });
 });
 
-router.get('/comment/:id', isLoggedIn, async function(req, res, next) {
+// Comment page
+router.get("/comment/:id", isLoggedIn, async function (req, res) {
   try {
     const user = await userModel.findOne({ username: req.session.passport.user });
     const post = await postModel.findById(req.params.id).populate("user");
-    
-    res.render('comment', { post, user });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).send('Server Error');
+    if (!post || !post.user) return res.redirect("/feed");
+
+    const docs = await commentModel
+      .find({ post: post._id })
+      .populate("user", "username picture")
+      .sort({ createdAt: 1 });
+
+    const me = user._id.toString();
+    const postOwner = post.user._id.toString();
+
+    const comments = docs
+      .filter((c) => c.user)
+      .map((c) => ({
+        id: c._id.toString(),
+        text: c.text,
+        username: c.user.username,
+        picture: c.user.picture,
+        time: c.createdAt,
+        parent: c.parent ? c.parent.toString() : null,
+        likeCount: c.likes.length,
+        liked: c.likes.some((id) => id.toString() === me),
+        canDelete: c.user._id.toString() === me || postOwner === me,
+      }));
+
+    const commentData = JSON.stringify({
+      postId: post._id.toString(),
+      me: { username: user.username, picture: user.picture },
+      comments,
+    }).replace(/</g, "\\u003c");
+
+    res.render("comment", { footer: false, post, user, commentData });
+  } catch (err) {
+    console.error("Comment page error:", err);
+    res.status(500).send("Server Error");
   }
 });
 
-router.post('/comment/:id', isLoggedIn, async function(req, res, next) {
+// Naya comment ya reply
+router.post("/comment/:id", isLoggedIn, async function (req, res) {
+  try {
+    const text = (req.body.text || "").trim().slice(0, 500);
+    if (!text) return res.status(400).json({ error: "Comment can't be empty." });
+
+    const user = await userModel.findOne({ username: req.session.passport.user });
+    const post = await postModel.findById(req.params.id);
+    if (!post) return res.status(404).json({ error: "Post not found" });
+
+    // Reply ho to hamesha main comment ke neeche (Instagram jaisa one-level)
+    let parent = null;
+    if (req.body.parent) {
+      const p = await commentModel.findById(req.body.parent);
+      if (p && p.post.toString() === post._id.toString()) {
+        parent = p.parent || p._id;
+      }
+    }
+
+    const c = await commentModel.create({
+      text,
+      user: user._id,
+      post: post._id,
+      parent,
+    });
+
+    res.json({
+      comment: {
+        id: c._id.toString(),
+        text: c.text,
+        username: user.username,
+        picture: user.picture,
+        time: c.createdAt,
+        parent: parent ? parent.toString() : null,
+        likeCount: 0,
+        liked: false,
+        canDelete: true,
+      },
+    });
+  } catch (err) {
+    console.error("Add comment error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Comment like / unlike
+router.post("/comment/like/:cid", isLoggedIn, async function (req, res) {
   try {
     const user = await userModel.findOne({ username: req.session.passport.user });
-    const post = await postModel.findById(req.params.id).populate("user");
-    
-    const newComment = await commentModel.create({
-      text: req.body.text,
-      user: user._id,
-      post: post._id
-    });
-    post.comments.push(newComment._id);
-    await post.save();
+    const c = await commentModel.findById(req.params.cid);
+    if (!c) return res.status(404).json({ error: "Comment not found" });
 
-    
-    return res.status(200).json({ msg: 'Comment added successfully', comment: newComment });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).send('Server Error');
+    const idx = c.likes.findIndex((id) => id.toString() === user._id.toString());
+    if (idx === -1) c.likes.push(user._id);
+    else c.likes.splice(idx, 1);
+    await c.save();
+
+    res.json({ liked: idx === -1, count: c.likes.length });
+  } catch (err) {
+    console.error("Comment like error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Comment delete: comment ka owner ya post ka owner
+router.delete("/comment/:cid", isLoggedIn, async function (req, res) {
+  try {
+    const user = await userModel.findOne({ username: req.session.passport.user });
+    const c = await commentModel.findById(req.params.cid);
+    if (!c) return res.status(404).json({ error: "Comment not found" });
+
+    const post = await postModel.findById(c.post);
+    const me = user._id.toString();
+    const allowed =
+      c.user.toString() === me || (post && post.user.toString() === me);
+    if (!allowed) return res.status(403).json({ error: "Not allowed" });
+
+    await commentModel.deleteMany({ $or: [{ _id: c._id }, { parent: c._id }] });
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Delete comment error:", err);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
@@ -89,7 +183,9 @@ router.delete("/post/:id", isLoggedIn, async function (req, res) {
       fs.unlink(filePath, () => {});
     }
 
-    await post.deleteOne();
+    await commentModel.deleteMany({ post: post._id });
+        await post.deleteOne();
+
 
     res.json({ success: true });
   } catch (err) {
@@ -131,7 +227,6 @@ router.delete("/story/:id", isLoggedIn, async function (req, res) {
 });
 
 
-// Story dekhi: viewer record karo (owner khud count nahi hota)
 router.post("/story/:id/view", isLoggedIn, async function (req, res) {
   try {
     const user = await userModel.findOne({ username: req.session.passport.user });
@@ -151,7 +246,7 @@ router.post("/story/:id/view", isLoggedIn, async function (req, res) {
   }
 });
 
-// Story like / unlike
+
 router.post("/story/:id/like", isLoggedIn, async function (req, res) {
   try {
     const user = await userModel.findOne({ username: req.session.passport.user });
@@ -170,7 +265,6 @@ router.post("/story/:id/like", isLoggedIn, async function (req, res) {
   }
 });
 
-// Viewers list: sirf story ka owner dekh sakta hai
 router.get("/story/:id/viewers", isLoggedIn, async function (req, res) {
   try {
     const user = await userModel.findOne({ username: req.session.passport.user });
@@ -216,7 +310,6 @@ router.get("/feed", isLoggedIn, async function (req, res) {
     .findOne({ username: req.session.passport.user })
     .populate("posts");
 
-  // Stories: apni + following, sirf pichle 24 ghante ki
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const storyDocs = await storyModel
     .find({
@@ -226,6 +319,7 @@ router.get("/feed", isLoggedIn, async function (req, res) {
     .populate("user", "username picture")
     .sort({ createdAt: 1 });
 
+  const me = user._id.toString();
   const groupsMap = {};
   storyDocs.forEach(function (s) {
     if (!s.user) return;
@@ -235,34 +329,39 @@ router.get("/feed", isLoggedIn, async function (req, res) {
         userId: key,
         username: s.user.username,
         picture: s.user.picture,
-        own: key === user._id.toString(),
+        own: key === me,
         items: [],
       };
     }
-  const me = user._id.toString();
-groupsMap[key].items.push({
-  id: s._id.toString(),
-  src: "/images/uploads/" + s.story,
-  time: s.createdAt,
-  caption: s.caption || "",
-  likeCount: s.likes.length,
-  liked: s.likes.some((id) => id.toString() === me),
-  viewCount: s.viewers.length,
-});
+    groupsMap[key].items.push({
+      id: s._id.toString(),
+      src: "/images/uploads/" + s.story,
+      time: s.createdAt,
+      caption: s.caption || "",
+      likeCount: s.likes.length,
+      liked: s.likes.some((id) => id.toString() === me),
+      viewCount: s.viewers.length,
+    });
   });
 
-  // Apni story sabse pehle
   const storyGroups = Object.values(groupsMap).sort(
     (a, b) => (b.own ? 1 : 0) - (a.own ? 1 : 0)
   );
-  // <script> ke andar safe embed ke liye
   const storyData = JSON.stringify(storyGroups).replace(/</g, "\\u003c");
 
+  // Pehle posts, phir unke comment counts
   let posts = await postModel
     .find({ user: { $in: [user._id, ...user.following] } })
     .populate("user")
     .sort({ _id: -1 });
   posts = posts.filter((p) => p.user);
+
+  const countRows = await commentModel.aggregate([
+    { $match: { post: { $in: posts.map((p) => p._id) } } },
+    { $group: { _id: "$post", n: { $sum: 1 } } },
+  ]);
+  const commentCounts = {};
+  countRows.forEach((r) => (commentCounts[r._id.toString()] = r.n));
 
   res.render("feed", {
     footer: true,
@@ -270,6 +369,7 @@ groupsMap[key].items.push({
     posts,
     storyGroups,
     storyData,
+    commentCounts,
     dater: utils.formatRelativeTime,
   });
 });
@@ -288,7 +388,7 @@ router.get("/profile/:user", isLoggedIn, async function (req, res) {
   let user = await userModel.findOne({ username: req.session.passport.user });
 
   if (user.username === req.params.user) {
-    res.redirect("/profile");
+   return res.redirect("/profile");
   }
 
   let userprofile = await userModel
@@ -383,7 +483,11 @@ router.get("/edit", isLoggedIn, async function (req, res) {
 
 router.get("/upload", isLoggedIn, async function (req, res) {
   let user = await userModel.findOne({ username: req.session.passport.user });
-  res.render("upload", { footer: true, user });
+  res.render("upload", {
+    footer: true,
+    user,
+    category: req.query.category === "story" ? "story" : "post",
+  });
 });
 
 router.post("/update", isLoggedIn, async function (req, res) {
@@ -461,10 +565,7 @@ router.post( "/post", isLoggedIn, upload.single("image"),
   }
 );
 
-router.post(
-  "/generate-caption",
-  isLoggedIn,
-  upload.single("image"),
+router.post("/generate-caption",isLoggedIn, upload.single("image"),
   async (req, res) => {
     try {
       if (!req.file) {
@@ -490,10 +591,7 @@ router.post(
   }
 );
 
-router.post(
-  "/upload",
-  isLoggedIn,
-  upload.single("image"),
+router.post("/upload", isLoggedIn, upload.single("image"),
   async function (req, res) {
     const user = await userModel.findOne({
       username: req.session.passport.user,
@@ -504,7 +602,6 @@ router.post(
   }
 );
 
-// POST
 
 router.post("/register", function (req, res) {
   const user = new userModel({
@@ -520,16 +617,14 @@ router.post("/register", function (req, res) {
   });
 });
 
-router.post(
-  "/login",
-  passport.authenticate("local", {
+router.post( "/login",passport.authenticate("local", {
     successRedirect: "/feed",
     failureRedirect: "/login",
   }),
   function (req, res) {}
 );
 
-router.get("/logout", function (req, res) {
+router.get("/logout", function (req, res, next) {
   req.logout(function (err) {
     if (err) {
       return next(err);

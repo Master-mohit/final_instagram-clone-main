@@ -373,7 +373,7 @@
           .then(function (d) {
             list.textContent = "";
             if (!d.viewers || !d.viewers.length) {
-              list.textContent = "Abhi kisi ne nahi dekhi.";
+              list.textContent = "No views yet.";
               return;
             }
             d.viewers.forEach(function (v) {
@@ -398,7 +398,7 @@
               list.appendChild(row);
             });
           })
-          .catch(function () { list.textContent = "Load nahi hua"; });
+          .catch(function () { list.textContent = "Couldn't load viewers."; });
       });
       $("viewers-close").addEventListener("click", function () {
         sheet.classList.add("hidden");
@@ -409,14 +409,14 @@
       delBtn.addEventListener("click", function () {
         var item = groups[gi].items[si];
         clearTimeout(timer);
-        if (!confirm("Is story ko delete karna hai?")) { show(); return; }
+        if (!confirm("Delete this story?")) { show(); return; }
         fetch("/story/" + item.id, { method: "DELETE" })
           .then(function (r) { return r.json(); })
           .then(function (d) {
             if (d.success) location.reload();
-            else { alert(d.error || "Delete nahi hua"); show(); }
+            else { alert(d.error || "Couldn't delete the story."); show(); }
           })
-          .catch(function () { alert("Network error"); show(); });
+          .catch(function () { alert("Network error. Please try again."); show(); });
       });
 
       document.addEventListener("keydown", function (e) {
@@ -529,9 +529,9 @@
           .then(function (r) { return r.json(); })
           .then(function (data) {
             if (data.success) location.reload();
-            else { alert(data.error || "Delete nahi hua"); show(); }
+            else { alert(data.error || "Couldn't delete the story."); show(); }
           })
-          .catch(function () { alert("Network error"); show(); });
+          .catch(function () { alert("Network error. Please try again.");   show(); });
       });
     })();
   </script>
