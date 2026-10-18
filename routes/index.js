@@ -9,7 +9,8 @@ passport.use(new localStrategy(userModel.authenticate()));
 const upload = require("./multer");
 const utils = require("../utils/utils");
 const generateCaption = require("../config/germini");
-
+const fs = require("fs");
+const path = require("path");
 
 
 // GET
@@ -51,6 +52,49 @@ router.post('/comment/:id', isLoggedIn, async function(req, res, next) {
   } catch (error) {
     console.error(error);
     return res.status(500).send('Server Error');
+  }
+});
+
+router.delete("/post/:id", isLoggedIn, async function (req, res) {
+  try {
+    const user = await userModel.findOne({
+      username: req.session.passport.user,
+    });
+    const post = await postModel.findById(req.params.id);
+
+    if (!post) {
+      return res.status(404).json({ error: "Post not found" });
+    }
+
+    
+    if (post.user.toString() !== user._id.toString()) {
+      return res.status(403).json({ error: "Not allowed" });
+    }
+
+    user.posts.pull(post._id);
+    await user.save();
+
+    await userModel.updateMany(
+      { saved: post._id },
+      { $pull: { saved: post._id } }
+    );
+
+  
+    if (post.picture && !post.picture.startsWith("http")) {
+      const filePath = path.join(
+        __dirname,
+        "../public/images/uploads",
+        path.basename(post.picture)
+      );
+      fs.unlink(filePath, () => {});
+    }
+
+    await post.deleteOne();
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Delete post error:", err);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
