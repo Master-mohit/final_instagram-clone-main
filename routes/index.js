@@ -7,6 +7,7 @@ const postModel = require("./posts");
 const storyModel = require("./story");
 const commentModel = require("./comment");
 const notificationModel = require("./notification");
+const messageModel = require("./message");
 const { notify, removeNotification } = require("../utils/notify");
 passport.use(new localStrategy(userModel.authenticate()));
 const upload = require("./multer");
@@ -381,6 +382,215 @@ router.get("/like/:postid", async function (req, res) {
   await post.save();
   res.json(post);
 });
+
+
+// ---------- MESSAGES ----------
+
+function fmtMessage(m, meId) {
+  return {
+    id: m._id.toString(),
+    mine: m.from.toString() === meId,
+    text: m.text,
+    time: m.createdAt,
+    read: m.read,
+  };
+}
+
+// Inbox
+router.get("/messages", isLoggedIn, async function (req, res) {
+  try {
+    const user = await userModel.findOne({ username: req.session.passport.user });
+    const me = user._id.toString();
+
+    const msgs = await messageModel
+      .find({ $or: [{ from: user._id }, { to: user._id }] })
+      .sort({ createdAt: -1 })
+      .limit(500)
+      .populate("from", "username picture")
+      .populate("to", "username picture");
+
+    const map = {};
+    msgs.forEach(function (m) {
+      if (!m.from || !m.to) return;
+      const mine = m.from._id.toString() === me;
+      const other = mine ? m.to : m.from;
+      const key = other._id.toString();
+      if (!map[key]) {
+        map[key] = {
+          username: other.username,
+          picture: other.picture,
+          last: m.text,
+          time: m.createdAt,
+          lastMine: mine,
+          unread: 0,
+        };
+      }
+      if (!mine && !m.read) map[key].unread++;
+    });
+
+    const chats = Object.values(map); // newest chat sabse upar
+    res.render("messages", { footer: true, user, chats, dater: utils.formatRelativeTime });
+  } catch (err) {
+    console.error("Inbox error:", err);
+    res.status(500).send("Server Error");
+  }
+});
+
+// Unread chats ka count (badge ke liye)
+router.get("/messages-count", isLoggedIn, async function (req, res) {
+  try {
+    const user = await userModel.findOne({ username: req.session.passport.user });
+    const senders = await messageModel.distinct("from", { to: user._id, read: false });
+    res.json({ count: senders.length });
+  } catch (err) {
+    res.status(500).json({ count: 0 });
+  }
+});
+
+// Naye logon ko dhundo (safe fields hi bhejta hai)
+router.get("/messages-search", isLoggedIn, async function (req, res) {
+  try {
+    const user = await userModel.findOne({ username: req.session.passport.user });
+    const q = (req.query.q || "").trim().slice(0, 30);
+    if (!q) return res.json([]);
+    const esc = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const users = await userModel
+      .find({ username: { $regex: "^" + esc, $options: "i" }, _id: { $ne: user._id } })
+      .select("username name picture")
+      .limit(10);
+    res.json(users);
+  } catch (err) {
+    res.status(500).json([]);
+  }
+});
+
+// Chat page
+router.get("/messages/:username", isLoggedIn, async function (req, res) {
+  try {
+    const user = await userModel.findOne({ username: req.session.passport.user });
+    const other = await userModel
+      .findOne({ username: req.params.username })
+      .select("username name picture");
+    if (!other || other._id.equals(user._id)) return res.redirect("/messages");
+
+    const me = user._id.toString();
+    const msgs = await messageModel
+      .find({
+        $or: [
+          { from: user._id, to: other._id },
+          { from: other._id, to: user._id },
+        ],
+      })
+      .sort({ createdAt: -1 })
+      .limit(100);
+    msgs.reverse();
+
+    // Jo messages abhi load hue unko read mark karo
+    await messageModel.updateMany(
+      { _id: { $in: msgs.map((m) => m._id) }, to: user._id, read: false },
+      { read: true }
+    );
+
+    const chatData = JSON.stringify({
+      other: { username: other.username, name: other.name, picture: other.picture },
+      messages: msgs.map((m) => fmtMessage(m, me)),
+    }).replace(/</g, "\\u003c");
+
+    res.render("chat", { footer: false, user, other, chatData });
+  } catch (err) {
+    console.error("Chat page error:", err);
+    res.status(500).send("Server Error");
+  }
+});
+
+// Poll: naye messages, unsend sync, seen status
+router.get("/messages/:username/poll", isLoggedIn, async function (req, res) {
+  try {
+    const user = await userModel.findOne({ username: req.session.passport.user });
+    const other = await userModel.findOne({ username: req.params.username }).select("_id");
+    if (!other) return res.status(404).json({ ok: false });
+
+    const me = user._id.toString();
+    let after = new Date(req.query.after);
+    if (isNaN(after.getTime())) after = new Date(0);
+
+    const theirRecent = await messageModel
+      .find({ from: other._id, to: user._id })
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .select("_id createdAt");
+    const windowStart =
+      theirRecent.length === 100
+        ? theirRecent[theirRecent.length - 1].createdAt
+        : new Date(0);
+
+    const incoming = await messageModel
+      .find({ from: other._id, to: user._id, createdAt: { $gt: after } })
+      .sort({ createdAt: 1 })
+      .limit(50);
+
+    if (incoming.length) {
+      await messageModel.updateMany(
+        { _id: { $in: incoming.map((m) => m._id) }, read: false },
+        { read: true }
+      );
+    }
+
+    const lastRead = await messageModel
+      .findOne({ from: user._id, to: other._id, read: true })
+      .sort({ createdAt: -1 })
+      .select("createdAt");
+
+    res.json({
+      ok: true,
+      messages: incoming.map((m) => fmtMessage(m, me)),
+      ids: theirRecent.map((m) => m._id.toString()),
+      windowStart,
+      seenUpTo: lastRead ? lastRead.createdAt : null,
+    });
+  } catch (err) {
+    console.error("Poll error:", err);
+    res.status(500).json({ ok: false });
+  }
+});
+
+// Message bhejo
+router.post("/messages/:username", isLoggedIn, async function (req, res) {
+  try {
+    const text = (req.body.text || "").trim().slice(0, 1000);
+    if (!text) return res.status(400).json({ error: "Message can't be empty." });
+
+    const user = await userModel.findOne({ username: req.session.passport.user });
+    const other = await userModel.findOne({ username: req.params.username }).select("_id");
+    if (!other || other._id.equals(user._id)) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    const m = await messageModel.create({ from: user._id, to: other._id, text });
+    res.json({ message: fmtMessage(m, user._id.toString()) });
+  } catch (err) {
+    console.error("Send message error:", err);
+    res.status(500).json({ error: "Couldn't send message." });
+  }
+});
+
+// Unsend: sirf apna message
+router.delete("/message/:id", isLoggedIn, async function (req, res) {
+  try {
+    const user = await userModel.findOne({ username: req.session.passport.user });
+    const m = await messageModel.findById(req.params.id);
+    if (!m) return res.status(404).json({ error: "Message not found." });
+    if (m.from.toString() !== user._id.toString()) {
+      return res.status(403).json({ error: "Not allowed." });
+    }
+    await m.deleteOne();
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Unsend error:", err);
+    res.status(500).json({ error: "Couldn't unsend message." });
+  }
+});
+
 
 router.get("/feed", isLoggedIn, async function (req, res) {
   let user = await userModel

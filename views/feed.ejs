@@ -3,6 +3,7 @@
     <div class="w-full px-4 flex items-center justify-between">
       <img class="w-1/4" src="/images/logo.png" alt="">
             <div class="icons -mt-2 flex gap-5 items-center">
+      
         <% var uc = (typeof unreadCount !== 'undefined') ? unreadCount : 0; %>
         <a href="/notifications" class="relative" aria-label="Notifications">
           <i class="text-[1.4rem] ri-heart-3-line"></i>
@@ -11,7 +12,11 @@
             <%= uc > 99 ? '99+' : uc %>
           </span>
         </a>
-        <i class="text-[1.4rem] ri-messenger-line"></i>
+        <a href="/messages" class="relative" aria-label="Messages">
+  <i class="text-[1.4rem] ri-messenger-line"></i>
+  <span id="msg-badge"
+    class="hidden absolute -top-1 -right-2 min-w-[1rem] h-4 px-1 bg-red-500 rounded-full text-[10px] flex items-center justify-center">0</span>
+</a>
       </div>
     </div>
      <div class="story px-3 flex gap-3 overflow-auto mt-5">
@@ -448,6 +453,30 @@
         })
         .catch(function () {});
     }, 30000);
+
+    function refreshBadges() {
+      if (document.hidden) return;
+      fetch("/notifications/count")
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          var b = document.getElementById("notif-badge");
+          if (!b) return;
+          b.textContent = d.count > 99 ? "99+" : d.count;
+          b.classList.toggle("hidden", d.count === 0);
+        })
+        .catch(function () {});
+      fetch("/messages-count")
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          var b = document.getElementById("msg-badge");
+          if (!b) return;
+          b.textContent = d.count > 99 ? "99+" : d.count;
+          b.classList.toggle("hidden", d.count === 0);
+        })
+        .catch(function () {});
+    }
+    refreshBadges();
+    setInterval(refreshBadges, 15000);
 
   </script>
 

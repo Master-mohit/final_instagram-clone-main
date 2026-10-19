@@ -1,0 +1,211 @@
+<% include ./partials/header.ejs %>
+  <div class="w-full flex flex-col bg-zinc-900 text-white" style="height:100vh; height:100dvh;">
+
+    <div class="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 flex-shrink-0">
+      <a href="/messages" class="text-2xl" aria-label="Back"><i class="ri-arrow-left-line"></i></a>
+      <a href="/profile/<%= encodeURIComponent(other.username) %>" class="flex items-center gap-3 min-w-0">
+        <img class="w-9 h-9 rounded-full object-cover flex-shrink-0"
+          src="/images/uploads/<%= other.picture %>" alt=""
+          onerror="this.onerror=null;this.src='/images/uploads/def.png'">
+        <div class="min-w-0">
+          <p class="text-sm font-semibold truncate"><%= other.username %></p>
+          <% if (other.name) { %><p class="text-xs opacity-50 truncate"><%= other.name %></p><% } %>
+        </div>
+      </a>
+    </div>
+
+    <div id="msg-list" class="flex-1 overflow-y-auto px-4 py-3"></div>
+
+    <div class="flex-shrink-0 border-t border-zinc-800 px-3 py-3 flex items-center gap-3"
+      style="padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px))">
+      <input id="msg-input" type="text" maxlength="1000" autocomplete="off" placeholder="Message..."
+        class="flex-1 min-w-0 bg-zinc-800 rounded-full px-4 py-2 text-base text-white caret-white outline-none placeholder-zinc-500"
+        style="color:#fff; -webkit-text-fill-color:#fff;">
+      <button id="msg-send" disabled class="text-sky-500 font-semibold text-sm opacity-40">Send</button>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var data = <%- chatData %>;
+      var state = data.messages;
+      var username = data.other.username;
+      var EPOCH = "1970-01-01T00:00:00.000Z";
+      var list = document.getElementById("msg-list");
+      var input = document.getElementById("msg-input");
+      var sendBtn = document.getElementById("msg-send");
+      var openId = null;
+
+      function el(tag, cls) { var e = document.createElement(tag); if (cls) e.className = cls; return e; }
+      function isTmp(id) { return String(id).indexOf("tmp-") === 0; }
+
+      function fmtTime(t) {
+        var d = new Date(t), now = new Date();
+        var time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+        if (d.toDateString() === now.toDateString()) return time;
+        return d.toLocaleDateString([], { day: "numeric", month: "short" }) + ", " + time;
+      }
+
+      function lastIncomingTime() {
+        var t = EPOCH;
+        state.forEach(function (m) { if (!m.mine && !isTmp(m.id) && m.time > t) t = m.time; });
+        return t;
+      }
+
+      function render(stick) {
+        var nearBottom = stick || (list.scrollHeight - list.scrollTop - list.clientHeight < 120);
+        list.textContent = "";
+
+        if (!state.length) {
+          var empty = el("p", "text-center text-sm opacity-50 mt-10");
+          empty.textContent = "No messages yet. Say hi 👋";
+          list.appendChild(empty);
+        }
+
+        var lastMineIdx = -1;
+        state.forEach(function (m, i) { if (m.mine) lastMineIdx = i; });
+        var prevTime = null;
+
+        state.forEach(function (m, i) {
+          if (!prevTime || new Date(m.time) - new Date(prevTime) > 10 * 60 * 1000) {
+            var lab = el("p", "text-center text-[11px] opacity-40 my-3");
+            lab.textContent = fmtTime(m.time);
+            list.appendChild(lab);
+          }
+          prevTime = m.time;
+
+          var row = el("div", "flex flex-col mb-1 " + (m.mine ? "items-end" : "items-start"));
+          var bubble = el("div",
+            "max-w-[75%] px-3 py-2 rounded-2xl text-sm break-words whitespace-pre-wrap " +
+            (m.mine ? "bg-sky-600 text-white" : "bg-zinc-800 text-white"));
+          bubble.textContent = m.text;
+
+          if (m.mine && !isTmp(m.id)) {
+            bubble.style.cursor = "pointer";
+            bubble.addEventListener("click", function () {
+              openId = openId === m.id ? null : m.id;
+              render(false);
+            });
+          }
+          row.appendChild(bubble);
+
+          if (m.mine && openId === m.id) {
+            var ub = el("button", "text-xs text-red-400 mt-1");
+            ub.textContent = "Unsend";
+            ub.addEventListener("click", function () {
+              if (!confirm("Unsend this message?")) return;
+              fetch("/message/" + m.id, { method: "DELETE" })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                  if (d.success) {
+                    state = state.filter(function (x) { return x.id !== m.id; });
+                    openId = null;
+                    render(false);
+                  } else alert(d.error || "Couldn't unsend message.");
+                })
+                .catch(function () { alert("Network error. Please try again."); });
+            });
+            row.appendChild(ub);
+          }
+
+          if (i === lastMineIdx) {
+            var st = el("p", "text-[11px] opacity-50 mt-1");
+            st.textContent = isTmp(m.id) ? "Sending..." : (m.read ? "Seen" : "Sent");
+            row.appendChild(st);
+          }
+
+          list.appendChild(row);
+        });
+
+        if (nearBottom) list.scrollTop = list.scrollHeight;
+      }
+
+      function updateBtn() {
+        var ok = input.value.trim().length > 0;
+        sendBtn.disabled = !ok;
+        sendBtn.style.opacity = ok ? "1" : "0.4";
+      }
+
+      function send() {
+        var text = input.value.trim();
+        if (!text) return;
+        var tmp = { id: "tmp-" + Date.now(), mine: true, text: text, time: new Date().toISOString(), read: false };
+        state.push(tmp);
+        input.value = "";
+        updateBtn();
+        render(true);
+
+        fetch("/messages/" + encodeURIComponent(username), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: text }),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            var i = state.indexOf(tmp);
+            if (d.message) {
+              if (i !== -1) state[i] = d.message;
+            } else {
+              if (i !== -1) state.splice(i, 1);
+              alert(d.error || "Couldn't send message.");
+            }
+            render(true);
+          })
+          .catch(function () {
+            var i = state.indexOf(tmp);
+            if (i !== -1) state.splice(i, 1);
+            alert("Network error. Please try again.");
+            render(false);
+          });
+      }
+
+      function poll() {
+        if (document.hidden) return;
+        fetch("/messages/" + encodeURIComponent(username) + "/poll?after=" + encodeURIComponent(lastIncomingTime()))
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (!d || !d.ok) return;
+            var changed = false;
+
+            // 1. Samne wale ne unsend kiya ho to hata do
+            var ids = {};
+            d.ids.forEach(function (id) { ids[id] = true; });
+            var before = state.length;
+            state = state.filter(function (m) {
+              return m.mine || isTmp(m.id) || m.time < d.windowStart || ids[m.id];
+            });
+            if (state.length !== before) changed = true;
+
+            // 2. Naye messages
+            d.messages.forEach(function (m) {
+              if (!state.some(function (x) { return x.id === m.id; })) {
+                state.push(m);
+                changed = true;
+              }
+            });
+
+            // 3. Seen
+            if (d.seenUpTo) {
+              state.forEach(function (m) {
+                if (m.mine && !m.read && !isTmp(m.id) && m.time <= d.seenUpTo) {
+                  m.read = true;
+                  changed = true;
+                }
+              });
+            }
+
+            if (changed) render(false);
+          })
+          .catch(function () {});
+      }
+
+      input.addEventListener("input", updateBtn);
+      input.addEventListener("keydown", function (e) { if (e.key === "Enter") send(); });
+      sendBtn.addEventListener("click", send);
+      document.addEventListener("visibilitychange", poll);
+      setInterval(poll, 3000);
+
+      render(true);
+    })();
+  </script>
+<% include ./partials/footer.ejs %>

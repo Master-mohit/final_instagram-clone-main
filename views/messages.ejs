@@ -1,0 +1,103 @@
+<% include ./partials/header.ejs %>
+
+  <div class="w-full min-h-screen bg-zinc-900 text-white pb-24">
+
+    <div class="sticky top-0 z-10 bg-zinc-900 border-b border-zinc-800 px-4 py-3 flex items-center gap-4">
+      <a href="/feed" class="text-2xl" aria-label="Back"><i class="ri-arrow-left-line"></i></a>
+      <h3 class="text-base font-semibold"><%= user.username %></h3>
+    </div>
+
+    <div class="px-4 py-3">
+      <input id="user-search" type="text" autocomplete="off" placeholder="Search people to message"
+        class="w-full bg-zinc-800 rounded-lg px-4 py-2 text-base text-white caret-white outline-none placeholder-zinc-500"
+        style="color:#fff; -webkit-text-fill-color:#fff;">
+    </div>
+
+    <div id="search-results" class="hidden"></div>
+
+    <div id="chat-list">
+      <% if (chats.length === 0) { %>
+        <div class="text-center mt-24 px-6">
+          <p class="text-xl font-bold">No messages yet.</p>
+          <p class="text-sm opacity-50 mt-1">Search for someone above to start a conversation.</p>
+        </div>
+      <% } %>
+      <% chats.forEach(function(c){ %>
+        <a href="/messages/<%= encodeURIComponent(c.username) %>" class="flex items-center gap-3 px-4 py-3">
+          <img class="w-14 h-14 rounded-full object-cover flex-shrink-0"
+            src="/images/uploads/<%= c.picture %>" alt=""
+            onerror="this.onerror=null;this.src='/images/uploads/def.png'">
+          <div class="flex-1 min-w-0">
+            <p class="text-sm <%= c.unread ? 'font-bold' : '' %>"><%= c.username %></p>
+            <p class="text-xs truncate <%= c.unread ? 'text-white font-semibold' : 'opacity-50' %>">
+              <%= c.lastMine ? 'You: ' : '' %><%= c.last %> · <%= dater(new Date(c.time)) %>
+            </p>
+          </div>
+          <% if (c.unread) { %><span class="w-2.5 h-2.5 rounded-full bg-sky-500 flex-shrink-0"></span><% } %>
+        </a>
+      <% }) %>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var input = document.getElementById("user-search");
+      var results = document.getElementById("search-results");
+      var chatList = document.getElementById("chat-list");
+      var t = null;
+
+      input.addEventListener("input", function () {
+        clearTimeout(t);
+        var q = input.value.trim();
+        if (!q) {
+          results.classList.add("hidden");
+          results.textContent = "";
+          chatList.classList.remove("hidden");
+          return;
+        }
+        t = setTimeout(function () {
+          fetch("/messages-search?q=" + encodeURIComponent(q))
+            .then(function (r) { return r.json(); })
+            .then(function (users) {
+              results.textContent = "";
+              chatList.classList.add("hidden");
+              results.classList.remove("hidden");
+              if (!users.length) {
+                var empty = document.createElement("p");
+                empty.className = "px-4 py-6 text-sm opacity-50 text-center";
+                empty.textContent = "No users found.";
+                results.appendChild(empty);
+                return;
+              }
+              users.forEach(function (u) {
+                var a = document.createElement("a");
+                a.href = "/messages/" + encodeURIComponent(u.username);
+                a.className = "flex items-center gap-3 px-4 py-3";
+                var im = document.createElement("img");
+                im.className = "w-12 h-12 rounded-full object-cover flex-shrink-0";
+                im.src = "/images/uploads/" + u.picture;
+                im.onerror = function () { im.onerror = null; im.src = "/images/uploads/def.png"; };
+                var box = document.createElement("div");
+                var n1 = document.createElement("p");
+                n1.className = "text-sm font-semibold";
+                n1.textContent = u.username;
+                var n2 = document.createElement("p");
+                n2.className = "text-xs opacity-50";
+                n2.textContent = u.name || "";
+                box.appendChild(n1); box.appendChild(n2);
+                a.appendChild(im); a.appendChild(box);
+                results.appendChild(a);
+              });
+            })
+            .catch(function () {});
+        }, 250);
+      });
+
+      // Inbox ko 15 sec me refresh karo (search ya typing ke time nahi)
+      setInterval(function () {
+        if (document.hidden || input.value || document.activeElement === input) return;
+        location.reload();
+      }, 15000);
+    })();
+  </script>
+<% include ./partials/footer.ejs %>
