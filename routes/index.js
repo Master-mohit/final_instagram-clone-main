@@ -6,6 +6,8 @@ const userModel = require("./users");
 const postModel = require("./posts");
 const storyModel = require("./story");
 const commentModel = require("./comment");
+const notificationModel = require("./notification");
+const { notify, removeNotification } = require("../utils/notify");
 passport.use(new localStrategy(userModel.authenticate()));
 const upload = require("./multer");
 const utils = require("../utils/utils");
@@ -89,6 +91,18 @@ router.post("/comment/:id", isLoggedIn, async function (req, res) {
       post: post._id,
       parent,
     });
+
+    let replyTarget = null;
+if (parent) {
+  const pc = await commentModel.findById(parent).select("user");
+  if (pc) replyTarget = pc.user.toString();
+}
+if (replyTarget) {
+  notify({ to: replyTarget, from: user._id, type: "reply", post: post._id, text });
+}
+if (post.user.toString() !== replyTarget) {
+  notify({ to: post.user, from: user._id, type: "comment", post: post._id, text });
+}
 
     res.json({
       comment: {
@@ -184,6 +198,7 @@ router.delete("/post/:id", isLoggedIn, async function (req, res) {
     }
 
     await commentModel.deleteMany({ post: post._id });
+    await notificationModel.deleteMany({ post: post._id });
         await post.deleteOne();
 
 
@@ -258,6 +273,12 @@ router.post("/story/:id/like", isLoggedIn, async function (req, res) {
     else story.likes.splice(idx, 1);
     await story.save();
 
+    if (idx === -1) {
+  notify({ to: story.user, from: user._id, type: "story_like" });
+} else {
+  removeNotification({ to: story.user, from: user._id, type: "story_like" });
+}
+
     res.json({ liked: idx === -1, count: story.likes.length });
   } catch (err) {
     console.error("Story like error:", err);
@@ -293,14 +314,70 @@ router.get("/story/:id/viewers", isLoggedIn, async function (req, res) {
 });
 
 
+router.get("/notifications", isLoggedIn, async function (req, res) {
+  try {
+    const user = await userModel.findOne({ username: req.session.passport.user });
+
+    const docs = await notificationModel
+      .find({ to: user._id })
+      .populate("from", "username picture")
+      .populate("post", "picture")
+      .sort({ createdAt: -1 })
+      .limit(50);
+
+    const items = docs
+      .filter((n) => n.from)
+      .map((n) => ({
+        type: n.type,
+        text: n.text,
+        username: n.from.username,
+        picture: n.from.picture,
+        postPicture: n.post ? n.post.picture : null,
+        link: n.post
+          ? "/comment/" + n.post._id
+          : n.type === "story_like"
+          ? "/feed"
+          : "/profile/" + n.from.username,
+        time: n.createdAt,
+        unread: !n.read,
+      }));
+
+    // Page khulte hi sab read mark ho jayengi (is baar highlight dikhega)
+    await notificationModel.updateMany({ to: user._id, read: false }, { read: true });
+
+    res.render("notifications", {
+      footer: true,
+      user,
+      items,
+      dater: utils.formatRelativeTime,
+    });
+  } catch (err) {
+    console.error("Notifications page error:", err);
+    res.status(500).send("Server Error");
+  }
+});
+
+router.get("/notifications/count", isLoggedIn, async function (req, res) {
+  try {
+    const user = await userModel.findOne({ username: req.session.passport.user });
+    const count = await notificationModel.countDocuments({ to: user._id, read: false });
+    res.json({ count });
+  } catch (err) {
+    res.status(500).json({ count: 0 });
+  }
+});
+
+
 router.get("/like/:postid", async function (req, res) {
   const post = await postModel.findOne({ _id: req.params.postid });
   const user = await userModel.findOne({ username: req.session.passport.user });
   if (post.like.indexOf(user._id) === -1) {
-    post.like.push(user._id);
-  } else {
-    post.like.splice(post.like.indexOf(user._id), 1);
-  }
+  post.like.push(user._id);
+  notify({ to: post.user, from: user._id, type: "like", post: post._id });
+} else {
+  post.like.splice(post.like.indexOf(user._id), 1);
+  removeNotification({ to: post.user, from: user._id, type: "like", post: post._id });
+}
   await post.save();
   res.json(post);
 });
@@ -363,6 +440,10 @@ router.get("/feed", isLoggedIn, async function (req, res) {
   const commentCounts = {};
   countRows.forEach((r) => (commentCounts[r._id.toString()] = r.n));
 
+  const unreadCount = await notificationModel.countDocuments({ to: user._id, read: false });
+
+
+
   res.render("feed", {
     footer: true,
     user,
@@ -399,27 +480,51 @@ router.get("/profile/:user", isLoggedIn, async function (req, res) {
 });
 
 router.get("/follow/:userid", isLoggedIn, async function (req, res) {
-  let followKarneWaala = await userModel.findOne({
-    username: req.session.passport.user,
-  });
+  try {
+    let followKarneWaala = await userModel.findOne({
+      username: req.session.passport.user,
+    });
 
-  let followHoneWaala = await userModel.findOne({ _id: req.params.userid });
+    let followHoneWaala = await userModel.findOne({ _id: req.params.userid });
 
-  if (followKarneWaala.following.indexOf(followHoneWaala._id) !== -1) {
-    let index = followKarneWaala.following.indexOf(followHoneWaala._id);
-    followKarneWaala.following.splice(index, 1);
+    // User na mile ya khud ko follow karne ki koshish ho to wapas bhejo
+    if (!followHoneWaala || followHoneWaala._id.equals(followKarneWaala._id)) {
+      return res.redirect("back");
+    }
 
-    let index2 = followHoneWaala.followers.indexOf(followKarneWaala._id);
-    followHoneWaala.followers.splice(index2, 1);
-  } else {
-    followHoneWaala.followers.push(followKarneWaala._id);
-    followKarneWaala.following.push(followHoneWaala._id);
+    if (followKarneWaala.following.indexOf(followHoneWaala._id) !== -1) {
+      // Unfollow
+      let index = followKarneWaala.following.indexOf(followHoneWaala._id);
+      followKarneWaala.following.splice(index, 1);
+
+      let index2 = followHoneWaala.followers.indexOf(followKarneWaala._id);
+      if (index2 !== -1) followHoneWaala.followers.splice(index2, 1);
+
+      removeNotification({
+        to: followHoneWaala._id,
+        from: followKarneWaala._id,
+        type: "follow",
+      });
+    } else {
+      // Follow
+      followHoneWaala.followers.push(followKarneWaala._id);
+      followKarneWaala.following.push(followHoneWaala._id);
+
+      notify({
+        to: followHoneWaala._id,
+        from: followKarneWaala._id,
+        type: "follow",
+      });
+    }
+
+    await followHoneWaala.save();
+    await followKarneWaala.save();
+
+    res.redirect("back");
+  } catch (err) {
+    console.error("Follow error:", err);
+    res.status(500).send("Something went wrong");
   }
-
-  await followHoneWaala.save();
-  await followKarneWaala.save();
-
-  res.redirect("back");
 });
 
 router.get("/search", isLoggedIn, async function (req, res) {

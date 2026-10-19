@@ -1,0 +1,42 @@
+<% include ./partials/header.ejs %>
+  <div class="w-full min-h-screen bg-zinc-900 text-white pb-24">
+
+    <div class="sticky top-0 z-10 bg-zinc-900 border-b border-zinc-800 px-4 py-3 flex items-center gap-4">
+      <a href="/feed" class="text-2xl" aria-label="Back"><i class="ri-arrow-left-line"></i></a>
+      <h3 class="text-base font-semibold">Notifications</h3>
+    </div>
+
+    <% if (items.length === 0) { %>
+      <div class="text-center mt-32 px-6">
+        <p class="text-xl font-bold">No notifications yet.</p>
+        <p class="text-sm opacity-50 mt-1">When someone likes or comments on your posts, you'll see it here.</p>
+      </div>
+    <% } else { %>
+      <% items.forEach(function(n){ %>
+        <a href="<%= n.link %>" class="flex items-center gap-3 px-4 py-3 <%= n.unread ? 'bg-zinc-800/60' : '' %>">
+          <img class="w-11 h-11 rounded-full object-cover flex-shrink-0"
+            src="/images/uploads/<%= n.picture %>" alt=""
+            onerror="this.onerror=null;this.src='/images/uploads/def.png'">
+
+          <div class="flex-1 min-w-0 text-sm break-words">
+            <span class="font-semibold"><%= n.username %></span>
+            <% if (n.type === 'like') { %> liked your post.
+            <% } else if (n.type === 'story_like') { %> liked your story.
+            <% } else if (n.type === 'follow') { %> started following you.
+            <% } else if (n.type === 'comment') { %> commented: <span class="opacity-80"><%= n.text %></span>
+            <% } else if (n.type === 'reply') { %> replied to your comment: <span class="opacity-80"><%= n.text %></span>
+            <% } %>
+            <span class="opacity-40 text-xs ml-1"><%= dater(new Date(n.time)) %></span>
+          </div>
+
+          <% if (n.postPicture) { %>
+            <img class="w-11 h-11 object-cover rounded flex-shrink-0"
+              src="/images/uploads/<%= n.postPicture %>" alt=""
+              onerror="this.style.display='none'">
+          <% } %>
+          <% if (n.unread) { %><span class="w-2 h-2 rounded-full bg-sky-500 flex-shrink-0"></span><% } %>
+        </a>
+      <% }) %>
+    <% } %>
+  </div>
+<% include ./partials/footer.ejs %>
